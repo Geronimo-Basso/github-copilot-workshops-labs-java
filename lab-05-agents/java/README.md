@@ -96,6 +96,41 @@ This repository contains a collection of challenges to improve your skills with 
     PUT /employees/<id> - Update an employee by ID
 
 
+# 🎁 Bonus Track
+
+In this section, you’ll explore **GitHub Copilot Coding Agent** in action. Follow these steps to try it out:  
+
+1. **Fork** the following repository into your GitHub account: *[https://github.com/Geronimo-Basso/github-coding-agent-demo]*  
+2. **Explore** the repository briefly — you can even ask Copilot directly on GitHub to explain parts of the code.  
+3. **Create a new issue** in the repository. We suggest naming it:  
+   > **Add height and weight filters to player directory interface**  
+
+   You can structure the issue like this (or adapt it as you prefer):  
+
+   **Summary**  
+   Add UI controls and filtering logic so users can filter NBA players by height and weight in the Streamlit interface.  
+
+   **Motivation**  
+   Users can currently filter by name, team, school, country, position, and draft year. Adding height and weight filters will make it easier to search by physical attributes.  
+
+   **Acceptance Criteria**  
+   - Add height and weight sliders (min/max or range) to the sidebar.  
+   - Filter results update immediately when adjusted.  
+   - Include only players whose values fall within the selected range.  
+   - Display units clearly (e.g., inches, pounds).  
+   - Handle edge cases (invalid ranges, missing data, etc.).  
+
+   **Implementation Notes**  
+   - Check `nba-mock-data/players.csv` for column names and units.  
+   - Filtering happens client-side since the CSV is loaded in memory.  
+   - Add proper validation and unit labels in the UI.  
+   - Update the README with details about the new filters.  
+
+4. **Assign the issue** to **GitHub Copilot Agent**.  
+5. **Observe and review** how Copilot handles the implementation.  
+6. **Merge** the changes once ready — and don’t stop there! Try asking Copilot for more improvements or creative additions.  
+
+
 # Testing Employee API with curl
 
 ## Get All Employees
