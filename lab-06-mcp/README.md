@@ -59,7 +59,7 @@ MCP servers operate in the following way:
 ## 2. Prerequisites & Environment Setup
 
 ### Java Requirements
-- **JDK 17 or higher** (MCP Java SDK requires Java 17+)
+- **JDK 21 or higher** (MCP Java SDK requires Java 21+)
 - **Maven 3.8+**
 - **IDE**: IntelliJ IDEA, Eclipse, or VS Code with Java extensions
 
@@ -69,17 +69,26 @@ The `lab-06-mcp/java/` folder already contains a complete Maven project with the
 
 ```xml
 <dependencies>
+    <!-- MCP SDK -->
     <dependency>
-        <groupId>io.modelcontextprotocol</groupId>
-        <artifactId>mcp-sdk</artifactId>
-        <version>0.6.0</version>
+        <groupId>io.modelcontextprotocol.sdk</groupId>
+        <artifactId>mcp</artifactId>
+        <version>0.16.0</version>
+    </dependency>
+
+    <!-- Logging -->
+    <dependency>
+        <groupId>org.slf4j</groupId>
+        <artifactId>slf4j-api</artifactId>
+        <version>2.0.9</version>
     </dependency>
     <dependency>
         <groupId>org.slf4j</groupId>
         <artifactId>slf4j-simple</artifactId>
         <version>2.0.9</version>
     </dependency>
-    <!-- Additional dependencies for JSON processing -->
+
+    <!-- JSON processing -->
     <dependency>
         <groupId>com.google.code.gson</groupId>
         <artifactId>gson</artifactId>
@@ -103,39 +112,38 @@ Use GitHub Copilot to help you create the basic MCP server structure:
 ```java
 package com.example.mcp;
 
-import io.modelcontextprotocol.kotlin.sdk.server.Server;
-import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions;
-import io.modelcontextprotocol.kotlin.sdk.server.StdioServerTransport;
-import io.modelcontextprotocol.kotlin.sdk.Implementation;
-import io.modelcontextprotocol.kotlin.sdk.server.transport.Transport;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.modelcontextprotocol.server.McpServer;
+import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
+import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
+import io.modelcontextprotocol.spec.McpSchema.TextContent;
+import io.modelcontextprotocol.spec.McpSchema.Tool;
+import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
+import io.modelcontextprotocol.json.jackson.JacksonMcpJsonMapper;
+
+import java.util.List;
+import java.util.Map;
 
 public class MCPServer {
-    private final Server server;
-
-    public MCPServer() {
-        // Create server with basic info
-        Implementation implementation = new Implementation(
-            "demo-mcp-server",
-            "1.0.0"
-        );
-        
-        ServerOptions options = new ServerOptions().setCapabilities(
-            new ServerOptions.Capabilities()
-                .setTools(new Object()) // Enable tools
-                .setResources(new Object()) // Enable resources
-        );
-        
-        this.server = new Server(implementation, options);
-    }
-
+    
     public static void main(String[] args) {
-        MCPServer mcpServer = new MCPServer();
-        
-        // Use stdio transport
-        Transport transport = new StdioServerTransport();
-        
         System.err.println("MCP Server starting...");
-        mcpServer.server.connect(transport);
+        
+        // Create JSON mapper for transport - configure to ignore unknown fields
+        // This is required for compatibility with VS Code Copilot
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        JacksonMcpJsonMapper jsonMapper = new JacksonMcpJsonMapper(objectMapper);
+        
+        // Create STDIO transport provider
+        StdioServerTransportProvider transportProvider = new StdioServerTransportProvider(jsonMapper);
+        
+        // Create and configure sync server with basic info
+        McpServer.sync(transportProvider)
+            .serverInfo("demo-mcp-server", "1.0.0")
+            .build();
+        
+        System.err.println("Server is running...");
     }
 }
 ```
@@ -148,189 +156,168 @@ At this point the server has a name but exposes no tools or resources.
 
 ### Challenge: Add Math Tools
 
-Now expand your `MCPServer.java` to register tools. Add a `registerTools()` method that creates the following tools:
+Now expand your `MCPServer.java` to register tools. Use the `.toolCall()` method on the server builder to create the following tools:
 - `add` - adds two numbers
 - `subtract` - subtracts two numbers
 - `multiply` - multiplies two numbers
 - `divide` - divides two numbers (with error handling for division by zero)
 
-Here's the pattern for registering tools:
+Here's the complete pattern for registering tools:
 
 ```java
 package com.example.mcp;
 
-import io.modelcontextprotocol.kotlin.sdk.*;
-import io.modelcontextprotocol.kotlin.sdk.server.*;
-import io.modelcontextprotocol.kotlin.sdk.shared.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.modelcontextprotocol.server.McpServer;
+import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
+import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
+import io.modelcontextprotocol.spec.McpSchema.TextContent;
+import io.modelcontextprotocol.spec.McpSchema.Tool;
+import io.modelcontextprotocol.spec.McpSchema.JsonSchema;
+import io.modelcontextprotocol.json.jackson.JacksonMcpJsonMapper;
 
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
+/**
+ * MCP Server implementation using the official SDK 0.16.0
+ */
 public class MCPServer {
-    private final Server server;
-
-    public MCPServer() {
-        Implementation implementation = new Implementation(
-            "demo-mcp-server",
-            "1.0.0"
-        );
+    
+    public static void main(String[] args) {
+        System.err.println("MCP Server starting with tools...");
         
-        ServerOptions options = new ServerOptions().setCapabilities(
-            new ServerOptions.Capabilities()
-                .setTools(new Object())
-                .setResources(new Object())
-        );
+        // Create JSON mapper for transport - configure to ignore unknown fields
+        // This is required for compatibility with VS Code Copilot which may send
+        // newer protocol fields that the SDK doesn't recognize yet
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+        JacksonMcpJsonMapper jsonMapper = new JacksonMcpJsonMapper(objectMapper);
         
-        this.server = new Server(implementation, options);
+        // Create STDIO transport provider
+        StdioServerTransportProvider transportProvider = new StdioServerTransportProvider(jsonMapper);
         
-        // Register tools
-        registerTools();
-        registerResources();
+        // Create and configure sync server with tools using the toolCall API
+        McpServer.sync(transportProvider)
+            .serverInfo("demo-mcp-server", "1.0.0")
+            .toolCall(createAddTool(), (exchange, request) -> {
+                Map<String, Object> args2 = request.arguments();
+                int a = ((Number) args2.get("a")).intValue();
+                int b = ((Number) args2.get("b")).intValue();
+                int result = a + b;
+                return CallToolResult.builder()
+                    .content(List.of(new TextContent(String.valueOf(result))))
+                    .build();
+            })
+            .toolCall(createSubtractTool(), (exchange, request) -> {
+                Map<String, Object> args2 = request.arguments();
+                int a = ((Number) args2.get("a")).intValue();
+                int b = ((Number) args2.get("b")).intValue();
+                int result = a - b;
+                return CallToolResult.builder()
+                    .content(List.of(new TextContent(String.valueOf(result))))
+                    .build();
+            })
+            .toolCall(createMultiplyTool(), (exchange, request) -> {
+                Map<String, Object> args2 = request.arguments();
+                int a = ((Number) args2.get("a")).intValue();
+                int b = ((Number) args2.get("b")).intValue();
+                int result = a * b;
+                return CallToolResult.builder()
+                    .content(List.of(new TextContent(String.valueOf(result))))
+                    .build();
+            })
+            .toolCall(createDivideTool(), (exchange, request) -> {
+                Map<String, Object> args2 = request.arguments();
+                int a = ((Number) args2.get("a")).intValue();
+                int b = ((Number) args2.get("b")).intValue();
+                if (b == 0) {
+                    return CallToolResult.builder()
+                        .content(List.of(new TextContent("Error: Division by zero")))
+                        .isError(true)
+                        .build();
+                }
+                double result = (double) a / b;
+                return CallToolResult.builder()
+                    .content(List.of(new TextContent(String.valueOf(result))))
+                    .build();
+            })
+            .build();
+        
+        System.err.println("Available tools: add, subtract, multiply, divide");
+        System.err.println("Server is running...");
     }
 
-    private void registerTools() {
-        // Add tool
-        server.addTool(
-            "add",
-            "Add two numbers",
-            Map.of(
-                "type", "object",
-                "properties", Map.of(
+    private static Tool createAddTool() {
+        return Tool.builder()
+            .name("add")
+            .description("Add two numbers")
+            .inputSchema(new JsonSchema(
+                "object",
+                Map.of(
                     "a", Map.of("type", "integer", "description", "First number"),
                     "b", Map.of("type", "integer", "description", "Second number")
                 ),
-                "required", List.of("a", "b")
-            ),
-            (arguments) -> {
-                int a = ((Number) arguments.get("a")).intValue();
-                int b = ((Number) arguments.get("b")).intValue();
-                int result = a + b;
-                
-                return CompletableFuture.completedFuture(
-                    new CallToolResult(
-                        List.of(new TextContent(String.valueOf(result))),
-                        false
-                    )
-                );
-            }
-        );
-
-        // Subtract tool
-        server.addTool(
-            "subtract",
-            "Subtract two numbers",
-            Map.of(
-                "type", "object",
-                "properties", Map.of(
+                List.of("a", "b"),
+                false,
+                null,
+                null
+            ))
+            .build();
+    }
+    
+    private static Tool createSubtractTool() {
+        return Tool.builder()
+            .name("subtract")
+            .description("Subtract two numbers")
+            .inputSchema(new JsonSchema(
+                "object",
+                Map.of(
                     "a", Map.of("type", "integer", "description", "First number"),
                     "b", Map.of("type", "integer", "description", "Second number")
                 ),
-                "required", List.of("a", "b")
-            ),
-            (arguments) -> {
-                int a = ((Number) arguments.get("a")).intValue();
-                int b = ((Number) arguments.get("b")).intValue();
-                int result = a - b;
-                
-                return CompletableFuture.completedFuture(
-                    new CallToolResult(
-                        List.of(new TextContent(String.valueOf(result))),
-                        false
-                    )
-                );
-            }
-        );
-
-        // Multiply tool
-        server.addTool(
-            "multiply",
-            "Multiply two numbers",
-            Map.of(
-                "type", "object",
-                "properties", Map.of(
+                List.of("a", "b"),
+                false,
+                null,
+                null
+            ))
+            .build();
+    }
+    
+    private static Tool createMultiplyTool() {
+        return Tool.builder()
+            .name("multiply")
+            .description("Multiply two numbers")
+            .inputSchema(new JsonSchema(
+                "object",
+                Map.of(
                     "a", Map.of("type", "integer", "description", "First number"),
                     "b", Map.of("type", "integer", "description", "Second number")
                 ),
-                "required", List.of("a", "b")
-            ),
-            (arguments) -> {
-                int a = ((Number) arguments.get("a")).intValue();
-                int b = ((Number) arguments.get("b")).intValue();
-                int result = a * b;
-                
-                return CompletableFuture.completedFuture(
-                    new CallToolResult(
-                        List.of(new TextContent(String.valueOf(result))),
-                        false
-                    )
-                );
-            }
-        );
-
-        // Divide tool
-        server.addTool(
-            "divide",
-            "Divide two numbers",
-            Map.of(
-                "type", "object",
-                "properties", Map.of(
+                List.of("a", "b"),
+                false,
+                null,
+                null
+            ))
+            .build();
+    }
+    
+    private static Tool createDivideTool() {
+        return Tool.builder()
+            .name("divide")
+            .description("Divide two numbers")
+            .inputSchema(new JsonSchema(
+                "object",
+                Map.of(
                     "a", Map.of("type", "integer", "description", "Numerator"),
                     "b", Map.of("type", "integer", "description", "Denominator")
                 ),
-                "required", List.of("a", "b")
-            ),
-            (arguments) -> {
-                int a = ((Number) arguments.get("a")).intValue();
-                int b = ((Number) arguments.get("b")).intValue();
-                
-                if (b == 0) {
-                    return CompletableFuture.completedFuture(
-                        new CallToolResult(
-                            List.of(new TextContent("Error: Division by zero")),
-                            true
-                        )
-                    );
-                }
-                
-                double result = (double) a / b;
-                
-                return CompletableFuture.completedFuture(
-                    new CallToolResult(
-                        List.of(new TextContent(String.valueOf(result))),
-                        false
-                    )
-                );
-            }
-        );
-    }
-
-    private void registerResources() {
-        // Dynamic greeting resource with URI template: greeting://{name}
-        server.addResourceTemplate(
-            "greeting://{name}",
-            "Personalized greeting",
-            (uri) -> {
-                // Extract name from URI
-                String name = uri.toString().replace("greeting://", "");
-                String greeting = String.format("Hello, %s!", name);
-                
-                return CompletableFuture.completedFuture(
-                    new ReadResourceResult(
-                        List.of(new TextContent(greeting))
-                    )
-                );
-            }
-        );
-    }
-
-    public static void main(String[] args) {
-        MCPServer mcpServer = new MCPServer();
-        
-        Transport transport = new StdioServerTransport();
-        
-        System.err.println("MCP Server starting with tools and resources...");
-        mcpServer.server.connect(transport);
+                List.of("a", "b"),
+                false,
+                null,
+                null
+            ))
+            .build();
     }
 }
 ```
@@ -369,7 +356,7 @@ npx @modelcontextprotocol/inspector java -jar target/mcp-demo-1.0-SNAPSHOT.jar
 
 ---
 
-## 6. Writing a Java MCP Client
+## 6. Writing a Java MCP Client (Optional)
 
 ### Challenge: Create MCPClient.java
 
@@ -377,23 +364,29 @@ Create a new Java class `MCPClient.java` in the same package that connects to yo
 
 Your client should:
 1. Connect to the server via stdio transport
-2. List all available tools and resources
-3. Test the greeting resource with different names
-4. Call each math tool with sample inputs
-5. Demonstrate error handling (e.g., division by zero)
+2. List all available tools
+3. Call each math tool with sample inputs
+4. Demonstrate error handling (e.g., division by zero)
 
-Here's the starter code:
+Here's the working code:
 
 ```java
 package com.example.mcp;
 
-import io.modelcontextprotocol.kotlin.sdk.*;
-import io.modelcontextprotocol.kotlin.sdk.client.*;
-import io.modelcontextprotocol.kotlin.sdk.shared.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.modelcontextprotocol.client.McpClient;
+import io.modelcontextprotocol.client.McpSyncClient;
+import io.modelcontextprotocol.client.transport.ServerParameters;
+import io.modelcontextprotocol.client.transport.StdioClientTransport;
+import io.modelcontextprotocol.json.jackson.JacksonMcpJsonMapper;
+import io.modelcontextprotocol.spec.McpSchema;
+import io.modelcontextprotocol.spec.McpSchema.CallToolResult;
+import io.modelcontextprotocol.spec.McpSchema.TextContent;
+import io.modelcontextprotocol.spec.McpSchema.Tool;
+import io.modelcontextprotocol.spec.McpSchema.ListToolsResult;
 
-import java.util.List;
+import java.time.Duration;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 
 public class MCPClient {
     
@@ -407,52 +400,34 @@ public class MCPClient {
     }
     
     private static void runClient() throws Exception {
-        // Create client
-        Client client = new Client(
-            new Implementation("demo-client", "1.0.0"),
-            new ClientOptions()
-        );
+        // Create JSON mapper
+        ObjectMapper objectMapper = new ObjectMapper();
+        JacksonMcpJsonMapper jsonMapper = new JacksonMcpJsonMapper(objectMapper);
         
-        // Connect to server via stdio
-        StdioClientTransport transport = new StdioClientTransport(
-            new StdioClientTransport.StdioConfig(
-                "java",
-                List.of("-cp", "target/mcp-demo-1.0-SNAPSHOT.jar", 
-                       "com.example.mcp.MCPServer")
-            )
-        );
+        // Create server parameters for the stdio transport
+        ServerParameters serverParams = ServerParameters.builder("java")
+            .args("-jar", "target/mcp-demo-1.0-SNAPSHOT.jar")
+            .build();
         
-        client.connect(transport).get();
+        // Create STDIO transport to connect to server
+        StdioClientTransport transport = new StdioClientTransport(serverParams, jsonMapper);
+        
+        // Create sync client
+        McpSyncClient client = McpClient.sync(transport)
+            .clientInfo(new McpSchema.Implementation("demo-client", "1.0.0"))
+            .requestTimeout(Duration.ofSeconds(30))
+            .build();
+        
+        // Initialize the client (connects to server)
+        client.initialize();
         
         System.out.println("Connected to MCP Server\n");
         
         // List available tools
         System.out.println("== TOOLS ==");
-        ListToolsResult toolsResult = client.listTools().get();
-        for (Tool tool : toolsResult.getTools()) {
-            System.out.println(" - " + tool.getName() + ": " + tool.getDescription());
-        }
-        
-        // List available resources
-        System.out.println("\n== RESOURCES ==");
-        ListResourcesResult resourcesResult = client.listResources().get();
-        for (Resource resource : resourcesResult.getResources()) {
-            System.out.println(" - " + resource.getUri() + ": " + resource.getName());
-        }
-        
-        // Test greetings
-        System.out.println("\n== GREETINGS ==");
-        for (String name : List.of("Alice", "Bob", "Charlie")) {
-            try {
-                ReadResourceResult result = client.readResource(
-                    "greeting://" + name
-                ).get();
-                
-                String content = ((TextContent) result.getContents().get(0)).getText();
-                System.out.println(name + ": " + content);
-            } catch (Exception e) {
-                System.out.println("Failed greeting " + name + ": " + e.getMessage());
-            }
+        ListToolsResult toolsResult = client.listTools();
+        for (Tool tool : toolsResult.tools()) {
+            System.out.println(" - " + tool.name() + ": " + tool.description());
         }
         
         // Test tool calls
@@ -465,21 +440,24 @@ public class MCPClient {
         
         // Error demo
         System.out.println("\n== ERROR DEMO (divide by zero) ==");
-        try {
-            testToolCall(client, "divide", Map.of("a", 1, "b", 0));
-        } catch (Exception e) {
-            System.out.println("Expected error: " + e.getMessage());
-        }
+        testToolCall(client, "divide", Map.of("a", 1, "b", 0));
         
         // Cleanup
         client.close();
+        System.out.println("\nClient closed.");
     }
     
-    private static void testToolCall(Client client, String toolName, Map<String, Object> args) {
+    private static void testToolCall(McpSyncClient client, String toolName, Map<String, Object> args) {
         try {
-            CallToolResult result = client.callTool(toolName, args).get();
-            String output = ((TextContent) result.getContent().get(0)).getText();
-            System.out.println(toolName + " " + args + " => " + output);
+            CallToolResult result = client.callTool(new McpSchema.CallToolRequest(toolName, args));
+            if (result.content() != null && !result.content().isEmpty()) {
+                Object content = result.content().get(0);
+                if (content instanceof TextContent textContent) {
+                    System.out.println(toolName + " " + args + " => " + textContent.text());
+                } else {
+                    System.out.println(toolName + " " + args + " => " + content);
+                }
+            }
         } catch (Exception e) {
             System.out.println(toolName + " " + args + " => ERROR: " + e.getMessage());
         }
@@ -506,9 +484,21 @@ mvn exec:java -Dexec.mainClass="com.example.mcp.MCPClient"
 Expected output should show:
 - ✓ Connected to MCP Server
 - List of available tools (add, subtract, multiply, divide)
-- Greeting resource results
 - Math operation results
 - Error handling demonstration
+
+### Testing with MCP Inspector (Recommended)
+
+The best way to test your MCP server interactively is using the MCP Inspector:
+
+```bash
+npx @modelcontextprotocol/inspector java -jar target/mcp-demo-1.0-SNAPSHOT.jar
+```
+
+This will open a web interface where you can:
+- See all available tools
+- Call tools with custom arguments
+- View tool responses in real-time
 
 ---
 
@@ -530,18 +520,17 @@ You'll add:
 
 ### 8.2 `settings.json` (Enable Discovery)
 
-Create (or open) `.vscode/settings.json`:
+Create the folder `.vscode/` at the **workspace root** (same level as `lab-01-testing/`, `lab-06-mcp/`, etc.), then create `.vscode/settings.json`:
 
 ```jsonc
 {
-  // Enable experimental MCP auto-discovery for Copilot Chat
-  "chat.mcp.discovery.enabled": true
+  "chat.mcp.discovery.enabled": {}
 }
 ```
 
 ### 8.3 Understanding `mcp.json`
 
-Create `.vscode/mcp.json`. This file is a registry of MCP servers the Copilot host can spawn.
+Create `.vscode/mcp.json` in the same `.vscode/` folder. This file is a registry of MCP servers that Copilot Chat can spawn and use.
 
 ### 8.4 Java MCP Server Configuration
 
@@ -553,9 +542,8 @@ Create `.vscode/mcp.json`. This file is a registry of MCP servers the Copilot ho
       "type": "stdio",
       "command": "java",
       "args": [
-        "-cp",
-        "${workspaceFolder}\\lab-06-mcp\\java\\target\\mcp-demo-1.0-SNAPSHOT.jar",
-        "com.example.mcp.MCPServer"
+        "-jar",
+        "${workspaceFolder}\\lab-06-mcp\\java\\target\\mcp-demo-1.0-SNAPSHOT.jar"
       ]
     }
   },
@@ -571,9 +559,8 @@ Create `.vscode/mcp.json`. This file is a registry of MCP servers the Copilot ho
       "type": "stdio",
       "command": "java",
       "args": [
-        "-cp",
-        "${workspaceFolder}/lab-06-mcp/java/target/mcp-demo-1.0-SNAPSHOT.jar",
-        "com.example.mcp.MCPServer"
+        "-jar",
+        "${workspaceFolder}/lab-06-mcp/java/target/mcp-demo-1.0-SNAPSHOT.jar"
       ]
     }
   },
@@ -581,40 +568,26 @@ Create `.vscode/mcp.json`. This file is a registry of MCP servers the Copilot ho
 }
 ```
 
-**Using Maven Exec (Alternative):**
-```jsonc
-{
-  "servers": {
-    "java-mcp-demo": {
-      "type": "stdio",
-      "command": "mvn",
-      "args": [
-        "-f",
-        "${workspaceFolder}/lab-06-mcp/java/pom.xml",
-        "exec:java",
-        "-Dexec.mainClass=com.example.mcp.MCPServer",
-        "-q"
-      ]
-    }
-  },
-  "inputs": []
-}
-```
+> **Note:** We use `-jar` because the Maven Shade plugin packages all dependencies into a single executable JAR (uber-jar).
 
 ### 8.5 Start from VS Code
 
-1. **Build your project first**: `cd lab-06-mcp/java && mvn clean package`
-2. Open the `mcp.json` file in VS Code
-3. Click the play ▶ icon next to `java-mcp-demo`
-4. Open Copilot Chat and type: "Add 22 to 1 using the MCP server please"
-5. You should see the `add` tool invoked → response: `23`
+1. **Build your project first**: 
+   ```bash
+   cd lab-06-mcp/java
+   mvn clean package
+   ```
+2. Open the `.vscode/mcp.json` file in VS Code
+3. Click the **Start ▶** button that appears above `"java-mcp-demo"`
+4. Wait for the server indicator to turn **green** ✅ (running)
+5. Open **Copilot Chat** (Ctrl+Alt+I) and ask: `Add 22 and 1`
+6. You should see the `add` tool invoked → response: `23`
 
 ### 8.6 Try More Prompts
 
 - "multiply 7 by 6"
 - "divide 42 by 7"
 - "subtract 100 from 150"
-- "greet Maria using the greeting resource"
 
 If a tool doesn't trigger: make the intent clearer ("Use the add tool to add 5 and 11").
 
@@ -823,7 +796,7 @@ After an initial answer, try follow‑ups like:
 ### Troubleshooting
 
 **Issue: Server not starting**
-- Ensure Java 17+ is installed: `java -version`
+- Ensure Java 21+ is installed: `java -version`
 - Check your classpath includes all dependencies
 - Verify the JAR was built: `mvn clean package`
 
@@ -835,6 +808,11 @@ After an initial answer, try follow‑ups like:
 **Issue: ClassNotFoundException**
 - Run `mvn dependency:tree` to verify all dependencies are resolved
 - Ensure the main class path matches your package structure
+
+**Issue: Compilation errors with imports**
+- The correct package is `io.modelcontextprotocol.server.*` (not `io.modelcontextprotocol.kotlin.sdk.*`)
+- Use `McpServer.sync()` to create a sync server
+- Tool callbacks receive `(exchange, args)` parameters
 
 ---
 
